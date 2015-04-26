@@ -22,6 +22,7 @@ Features:
 * Generate payment for arrear/advance invoices
     """,
     "data" : [ 
+      "security/ir.model.access.csv",
       'subscription_view.xml', 
     ], 
     "application": False, 

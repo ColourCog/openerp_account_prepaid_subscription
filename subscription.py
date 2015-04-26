@@ -92,12 +92,13 @@ class account_prepaid(osv.osv):
             ],'Type', readonly=True, select=True, change_default=True, track_visibility='always'),
         'partner_id':fields.many2one('res.partner', 'Partner', required=True),
         'invoice_ids':fields.one2many('account.invoice', 'subscription_id', 'Invoices'),
-        'amount' : fields.float('Installment Amount', digits_compute=dp.get_precision('Account'), readonly=True), 
+        'amount' : fields.float('Installment Amount', digits_compute=dp.get_precision('Account'), required=True, readonly=True, states={'draft':[('readonly',False)]}),
+        'amount_total' : fields.float('Total', digits_compute=dp.get_precision('Account'), readonly=True), 
         'nb_payments': fields.integer("Number of payments", required=True, readonly=True, states={'draft':[('readonly',False)]}),
         'date_from': fields.date('Start Date', required=True),
         'post_account_id': fields.many2one('account.account', 'Post-paid Account', required=True),
         'pre_account_id': fields.many2one('account.account', 'Pre-paid Account', required=True),
-        'product_id': fields.many2one('product.product', 'Product', ondelete='set null', select=True),
+        'product_id': fields.many2one('product.product', 'Product', ondelete='set null', select=True, required=True),
         'product_account_id': fields.many2one('account.account', 'Product Account', required=True, domain=[('type','<>','view'), ('type', '<>', 'closed')], help="The income or expense account related to the selected product."),
         'journal_id': fields.many2one('account.journal', 'Journal', required=True, readonly=True, states={'draft':[('readonly',False)]},
                                       domain="[('type', 'in', {'out_invoice': ['sale'], 'in_invoice': ['purchase']}.get(type, [])), ('company_id', '=', company_id)]"),
@@ -122,6 +123,7 @@ class account_prepaid(osv.osv):
     }
 
     def create(self, cr, uid, vals, context=None):
+        vals['amount_total'] = vals['amount'] * vals['nb_payments']
         return super(account_prepaid, self).create(cr, uid, vals, context=context)
         
     

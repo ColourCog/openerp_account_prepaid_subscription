@@ -11,7 +11,6 @@
                     <field name="date_from"/>
                     <field name="frequency"/>
                     <field name="journal_id" invisible="1"/>
-                    <field name="period_id" invisible="1" groups="account.group_account_user"/>
                     <field name="company_id" groups="base.group_multi_company" widget="selection"/>
                     <field name="user_id"/>
                     <field name="currency_id" groups="base.group_multi_currency"/>
@@ -33,28 +32,31 @@
                 </header>
                 <sheet string="Supplier Subscription">
                     <field name="type" invisible="1"/>
+                    <field name="company_id" invisible="1"/>
                     <group>
                         <group>
                             <field string="Supplier" name="partner_id"
                               context="{'default_customer': 0, 'search_default_supplier': 1, 'default_supplier': 1}"
                               domain="[('supplier', '=', True)]"/>
-                            <field name="product_id"  widget="selection"/>
+                            <field name="product_id"  
+                              widget="selection"/>
+                            <field name="amount"/>
+                            <field name="nb_payments"/>
                             <field name="product_account_id" groups="account.group_account_user"/>
                         </group>
                         <group>
                             <field name="date_from"/>
                             <field domain="[('company_id', '=', company_id), ('type', '=', 'payable')]"
                                 name="post_account_id" groups="account.group_account_user"/>
-                            <field domain="[('company_id', '=', company_id)]"
+                            <field domain="[('company_id', '=', company_id), ('type', '=', 'payable')]"
                                 name="pre_account_id" groups="account.group_account_user"/>
-                            <field name="product_account_id" groups="account.group_account_user"/>
                             <field name="journal_id" groups="account.group_account_user" widget="selection"/>
                             <field name="currency_id" groups="base.group_multi_currency"/>
                         </group>
                     </group>
                     <notebook>
-                        <page string="Subscriptions">
-                            <field name="subscription_ids">
+                        <page string="Invoices">
+                            <field name="invoice_ids">
                                 <tree string="Subscriptions">
                                     <field name="name"/>
                                     <field name="company_id" invisible="1"/>
@@ -64,16 +66,10 @@
                             </field>
                             <group class="oe_subtotal_footer oe_right">
                                 <field name="amount_total" class="oe_subtotal_footer_separator" widget="monetary" options="{'currency_field': 'currency_id'}"/>
-                                <field name="residual" widget="monetary" options="{'currency_field': 'currency_id'}"/>
-                                <field name="reconciled" invisible="1"/>
                             </group>
                         </page>
                     </notebook>
                 </sheet>
-                <div class="oe_chatter">
-                    <field name="message_follower_ids" widget="mail_followers"/>
-                    <field name="message_ids" widget="mail_thread"/>
-                </div>
                 </form>
             </field>
         </record>
@@ -90,28 +86,31 @@
                 </header>
                 <sheet string="Customer Subscription">
                     <field name="type" invisible="1"/>
+                    <field name="company_id" invisible="1"/>
                     <group>
                         <group>
                             <field string="Supplier" name="partner_id"
                               context="{'default_customer': 0, 'search_default_supplier': 1, 'default_supplier': 1}"
                               domain="[('supplier', '=', True)]"/>
-                            <field name="product_id"  widget="selection"/>
+                            <field name="product_id"  
+                              widget="selection"/>
+                            <field name="amount"/>
+                            <field name="nb_payments"/>
                             <field name="product_account_id" groups="account.group_account_user"/>
                         </group>
                         <group>
                             <field name="date_from"/>
-                            <field domain="[('company_id', '=', company_id), ('type', '=', 'payable')]"
+                            <field domain="[('company_id', '=', company_id), ('type', '=', 'receivable')]"
                                 name="post_account_id" groups="account.group_account_user"/>
-                            <field domain="[('company_id', '=', company_id)]"
+                            <field domain="[('company_id', '=', company_id), ('type', '=', 'receivable')]"
                                 name="pre_account_id" groups="account.group_account_user"/>
-                            <field name="product_account_id" groups="account.group_account_user"/>
                             <field name="journal_id" groups="account.group_account_user" widget="selection"/>
                             <field name="currency_id" groups="base.group_multi_currency"/>
                         </group>
                     </group>
                     <notebook>
-                        <page string="Subscriptions">
-                            <field name="subscription_ids">
+                        <page string="Invoices">
+                            <field name="invoice_ids">
                                 <tree string="Subscriptions">
                                     <field name="name"/>
                                     <field name="company_id" invisible="1"/>
@@ -121,16 +120,10 @@
                             </field>
                             <group class="oe_subtotal_footer oe_right">
                                 <field name="amount_total" class="oe_subtotal_footer_separator" widget="monetary" options="{'currency_field': 'currency_id'}"/>
-                                <field name="residual" widget="monetary" options="{'currency_field': 'currency_id'}"/>
-                                <field name="reconciled" invisible="1"/>
                             </group>
                         </page>
                     </notebook>
                 </sheet>
-                <div class="oe_chatter">
-                    <field name="message_follower_ids" widget="mail_followers"/>
-                    <field name="message_ids" widget="mail_thread"/>
-                </div>
                 </form>
             </field>
         </record>
@@ -144,12 +137,10 @@
                     <separator/>
                     <field name="partner_id" operator="child_of"/>
                     <field name="user_id" string="Salesperson"/>
-                    <field name="period_id" string="Period"/>
                     <group expand="0" string="Group By...">
                         <filter string="Partner" icon="terp-partner" domain="[]" context="{'group_by':'partner_id'}"/>
                         <filter string="Journal" icon="terp-folder-orange" domain="[]" context="{'group_by':'journal_id'}"/>
                         <filter string="Status" icon="terp-stock_effects-object-colorize" domain="[]"  context="{'group_by':'state'}"/>
-                        <filter string="Period" icon="terp-go-month" domain="[]" context="{'group_by':'period_id'}"/>
                     </group>
                </search>
             </field>
@@ -183,7 +174,7 @@
               </p>
             </field>
         </record>
-        <menuitem action="action_subscription_tree1" id="menu_action_subscription_tree1" parent="menu_finance_receivables"/>
+        <menuitem action="action_subscription_tree1" id="menu_action_subscription_tree1" parent="account.menu_finance_receivables"/>
 
         <record id="action_subscription_tree2" model="ir.actions.act_window">
             <field name="name">Supplier Subscriptions</field>
@@ -202,7 +193,7 @@
               </p>
             </field>
         </record>
-        <menuitem action="action_subscription_tree2" id="menu_action_subscription_tree2" parent="menu_finance_payables"/>
+        <menuitem action="action_subscription_tree2" id="menu_action_subscription_tree2" parent="account.menu_finance_payables"/>
 
     </data>
 </openerp>
