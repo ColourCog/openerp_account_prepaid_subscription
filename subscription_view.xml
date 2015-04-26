@@ -6,11 +6,12 @@
             <field name="name">account.prepaid.tree</field>
             <field name="model">account.prepaid</field>
             <field name="arch" type="xml">
-                <tree colors="blue:state == 'draft'" string="Subscription">
+                <tree string="Subscription">
                     <field name="partner_id" groups="base.group_user"/>
                     <field name="date_from"/>
                     <field name="frequency"/>
                     <field name="journal_id" invisible="1"/>
+                    <field name="payment_id" invisible="1"/>
                     <field name="company_id" groups="base.group_multi_company" widget="selection"/>
                     <field name="user_id"/>
                     <field name="currency_id" groups="base.group_multi_currency"/>
@@ -26,9 +27,11 @@
             <field name="arch" type="xml">
                 <form string="Supplier Subscription" version="7.0">
                 <header>
-                    <button name="compute_subscriptions" states="draft" string="Create Subscriptions" class="oe_highlight" groups="account.group_account_subscription"/>
-                    <button name="validate_subscriptions" states="computed" string="Validate Subscriptions" class="oe_highlight" groups="account.group_account_subscription"/>
-                    <field name="state" widget="statusbar" statusbar_visible="draft,computed,paid" />
+                    <button name="compute_invoices" type="object" states="draft" string="Create Subscriptions" class="oe_highlight" />
+                    <button name="validate_invoices" type="object" states="computed" string="Validate Subscription" class="oe_highlight" />
+                    <button name="cancel_invoices" type="object" states="validated" string="Cancel Invoices" />
+                    <button name="pay_subscription" type="object" states="validated" string="Pay Now" class="oe_highlight" />
+                    <field name="state" widget="statusbar" statusbar_visible="draft,computed,validated,paid" />
                 </header>
                 <sheet string="Supplier Subscription">
                     <field name="type" invisible="1"/>
@@ -38,35 +41,31 @@
                             <field string="Supplier" name="partner_id"
                               context="{'default_customer': 0, 'search_default_supplier': 1, 'default_supplier': 1}"
                               domain="[('supplier', '=', True)]"/>
-                            <field name="product_id"  
-                              widget="selection"/>
-                            <field name="amount"/>
-                            <field name="nb_payments"/>
+                            <field name="product_id" domain="[('purchase_ok', '=', True)]"/>
+                            <field name="amount" widget="monetary" on_change="onchange_amount(amount, nb_payments)" />
+                            <field name="nb_payments" on_change="onchange_nb_payments(amount, nb_payments)" />
+                            <field name="amount_total" widget="monetary"/>
+                            <field name="frequency"/>
                             <field name="product_account_id" groups="account.group_account_user"/>
                         </group>
                         <group>
                             <field name="date_from"/>
+                            <field name="date_pay"/>
+                            <field name="partial"/>
                             <field domain="[('company_id', '=', company_id), ('type', '=', 'payable')]"
                                 name="post_account_id" groups="account.group_account_user"/>
                             <field domain="[('company_id', '=', company_id), ('type', '=', 'payable')]"
                                 name="pre_account_id" groups="account.group_account_user"/>
                             <field name="journal_id" groups="account.group_account_user" widget="selection"/>
-                            <field name="currency_id" groups="base.group_multi_currency"/>
+                            <field name="payment_id" domain="[('type', 'in', ['bank','cash'])]" 
+                                groups="account.group_account_user" widget="selection"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="voucher_id" />
                         </group>
                     </group>
                     <notebook>
                         <page string="Invoices">
-                            <field name="invoice_ids">
-                                <tree string="Subscriptions">
-                                    <field name="name"/>
-                                    <field name="company_id" invisible="1"/>
-                                    <field name="account_id" groups="account.group_account_user"/>
-                                    <field name="amount_total"/>
-                                </tree>
-                            </field>
-                            <group class="oe_subtotal_footer oe_right">
-                                <field name="amount_total" class="oe_subtotal_footer_separator" widget="monetary" options="{'currency_field': 'currency_id'}"/>
-                            </group>
+                            <field name="invoice_ids"/>
                         </page>
                     </notebook>
                 </sheet>
@@ -80,47 +79,46 @@
             <field name="arch" type="xml">
                 <form string="Subscription" version="7.0">
                 <header>
-                    <button name="compute_subscriptions" states="draft" string="Create Subscriptions" class="oe_highlight" groups="account.group_account_subscription"/>
-                    <button name="validate_subscriptions" states="computed" string="Validate Subscriptions" class="oe_highlight" groups="account.group_account_subscription"/>
-                    <field name="state" widget="statusbar" statusbar_visible="draft,computed,paid" />
+                    <button name="compute_invoices" type="object" states="draft" string="Create Subscriptions" class="oe_highlight" />
+                    <button name="validate_invoices" type="object" states="computed" string="Validate Subscription" class="oe_highlight" />
+                    <button name="cancel_invoices" type="object" states="validated" string="Cancel Invoices" />
+                    <button name="pay_subscription" type="object" states="validated" string="Pay Now" class="oe_highlight" />
+                    <field name="state" widget="statusbar" statusbar_visible="draft,computed,validated,paid" />
                 </header>
-                <sheet string="Customer Subscription">
+                <sheet string="Subscription">
                     <field name="type" invisible="1"/>
                     <field name="company_id" invisible="1"/>
                     <group>
                         <group>
-                            <field string="Supplier" name="partner_id"
-                              context="{'default_customer': 0, 'search_default_supplier': 1, 'default_supplier': 1}"
-                              domain="[('supplier', '=', True)]"/>
-                            <field name="product_id"  
-                              widget="selection"/>
-                            <field name="amount"/>
-                            <field name="nb_payments"/>
+                            <field string="Customer" name="partner_id"
+                                groups="base.group_user" context="{'search_default_customer':1, 'show_address': 1}"
+                                options='{"always_reload": True}'
+                                domain="[('customer', '=', True)]"/>
+                            <field name="product_id" domain="[('sale_ok', '=', True)]"/>
+                            <field name="amount" widget="monetary" on_change="onchange_amount(amount, nb_payments)" />
+                            <field name="nb_payments" on_change="onchange_nb_payments(amount, nb_payments)" />
+                            <field name="amount_total" widget="monetary"/>
+                            <field name="frequency"/>
                             <field name="product_account_id" groups="account.group_account_user"/>
                         </group>
                         <group>
                             <field name="date_from"/>
+                            <field name="date_pay"/>
+                            <field name="partial"/>
                             <field domain="[('company_id', '=', company_id), ('type', '=', 'receivable')]"
                                 name="post_account_id" groups="account.group_account_user"/>
                             <field domain="[('company_id', '=', company_id), ('type', '=', 'receivable')]"
                                 name="pre_account_id" groups="account.group_account_user"/>
                             <field name="journal_id" groups="account.group_account_user" widget="selection"/>
-                            <field name="currency_id" groups="base.group_multi_currency"/>
+                            <field name="payment_id" domain="[('type', 'in', ['bank','cash'])]" 
+                                groups="account.group_account_user" widget="selection"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="voucher_id" />
                         </group>
                     </group>
                     <notebook>
                         <page string="Invoices">
-                            <field name="invoice_ids">
-                                <tree string="Subscriptions">
-                                    <field name="name"/>
-                                    <field name="company_id" invisible="1"/>
-                                    <field name="account_id" groups="account.group_account_user"/>
-                                    <field name="amount_total"/>
-                                </tree>
-                            </field>
-                            <group class="oe_subtotal_footer oe_right">
-                                <field name="amount_total" class="oe_subtotal_footer_separator" widget="monetary" options="{'currency_field': 'currency_id'}"/>
-                            </group>
+                            <field name="invoice_ids"/>
                         </page>
                     </notebook>
                 </sheet>
@@ -133,8 +131,6 @@
             <field name="model">account.prepaid</field>
             <field name="arch" type="xml">
                 <search string="Search Subscription">
-                    <filter name="draft" string="Draft" domain="[('state','=','draft')]" help="Draft Subscriptions"/>
-                    <separator/>
                     <field name="partner_id" operator="child_of"/>
                     <field name="user_id" string="Salesperson"/>
                     <group expand="0" string="Group By...">
@@ -150,7 +146,7 @@
             <field name="name">Subscriptions</field>
             <field name="res_model">account.prepaid</field>
             <field name="view_type">form</field>
-            <field name="view_mode">tree,form,calendar,graph</field>
+            <field name="view_mode">tree,form</field>
             <field name="view_id" ref="subscription_tree"/>
             <field name="context">{'type':'out_invoice'}</field>
             <field name="search_view_id" ref="view_account_subscription_filter"/>

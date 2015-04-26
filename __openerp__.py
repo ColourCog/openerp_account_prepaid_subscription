@@ -24,6 +24,7 @@ Features:
     "data" : [ 
       "security/ir.model.access.csv",
       'subscription_view.xml', 
+      'subscription_sequence.xml', 
     ], 
     "application": False, 
     "installable": True

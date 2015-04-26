@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import time, datetime
+from lxml import etree
+
 import openerp.addons.decimal_precision as dp
 import openerp.exceptions
 
@@ -12,16 +14,19 @@ from openerp.tools.translate import _
 class invoice(osv.osv):
     _inherit = 'account.invoice'
     _columns = {
-        'subscription_id': fields.many2one('account.subscription', 'Company', required=True),
+        'subscription_id': fields.many2one('account.prepaid', 'Company', ondelete='cascade'),
     }
 
 invoice()
 
-def _monthly_dates(start, nb):
+def _monthly_dates(start, nb, partial):
     """Return a list of month end"""
+    if partial:
+        nb += 1 # 13th month!
+    s = datetime.datetime.strptime(start, '%Y-%m-%d')
     d = datetime.timedelta(1)
-    month = start.month
-    year = start.year
+    month = s.month
+    year = s.year
     dates = []
     while nb > 0 :
         month += 1
@@ -33,6 +38,26 @@ def _monthly_dates(start, nb):
         nb -= 1
     return dates
      
+def _partial(amount, nb, cur_date):
+
+    f = datetime.datetime.strptime(cur_date, '%Y-%m-%d')
+    m = datetime.date(f.year, f.month + 1, 1) - datetime.timedelta(1)
+    inst = ((m.day - f.day) / float(m.day)) * amount
+    total = amount * nb     
+    amounts = []
+
+    while total > 0 :
+        amounts.append(inst)
+        total -= inst
+        inst = amount
+        if total < amount:
+            inst = total
+    return amounts
+
+#TODO: hook workflow to get individual invoice payment feedback
+#TODO: add residual_amount to go with above
+#TODO: use residual_amount for "Pay Now"
+#TODO: only get non-reconciled move_lines for voucher creation
 
 class account_prepaid(osv.osv):
     _name='account.prepaid'
@@ -41,6 +66,7 @@ class account_prepaid(osv.osv):
     STATES = [
         ('draft', 'Draft'),
         ('computed', 'Computed'),
+        ('validated', 'Validated'),
         ('paid', 'Paid'),
         ]
     
@@ -52,8 +78,9 @@ class account_prepaid(osv.osv):
         'month':_monthly_dates,
     }
     
-    invoicetype = {
-        'out_invoice': '',
+    vouchertype = {
+        'out_invoice': 'receipt',
+        'in_invoice': 'payment',
     }
     
     def _get_type(self, cr, uid, context=None):
@@ -86,6 +113,7 @@ class account_prepaid(osv.osv):
         return res
 
     _columns = {
+        'name' : fields.char('Name', size=64, select=True, readonly=True), 
         'type': fields.selection([
             ('out_invoice','Customer Subscription'),
             ('in_invoice','Supplier Subscription'),
@@ -93,18 +121,21 @@ class account_prepaid(osv.osv):
         'partner_id':fields.many2one('res.partner', 'Partner', required=True),
         'invoice_ids':fields.one2many('account.invoice', 'subscription_id', 'Invoices'),
         'amount' : fields.float('Installment Amount', digits_compute=dp.get_precision('Account'), required=True, readonly=True, states={'draft':[('readonly',False)]}),
-        'amount_total' : fields.float('Total', digits_compute=dp.get_precision('Account'), readonly=True), 
+        'amount_total' : fields.float('Total', digits_compute=dp.get_precision('Account')), 
         'nb_payments': fields.integer("Number of payments", required=True, readonly=True, states={'draft':[('readonly',False)]}),
         'date_from': fields.date('Start Date', required=True),
+        'date_pay': fields.date('Payment Date', required=True),
         'post_account_id': fields.many2one('account.account', 'Post-paid Account', required=True),
         'pre_account_id': fields.many2one('account.account', 'Pre-paid Account', required=True),
-        'product_id': fields.many2one('product.product', 'Product', ondelete='set null', select=True, required=True),
+        'product_id': fields.many2one('product.product', 'Product', required=True),
         'product_account_id': fields.many2one('account.account', 'Product Account', required=True, domain=[('type','<>','view'), ('type', '<>', 'closed')], help="The income or expense account related to the selected product."),
         'journal_id': fields.many2one('account.journal', 'Journal', required=True, readonly=True, states={'draft':[('readonly',False)]},
                                       domain="[('type', 'in', {'out_invoice': ['sale'], 'in_invoice': ['purchase']}.get(type, [])), ('company_id', '=', company_id)]"),
+        'payment_id': fields.many2one('account.journal', 'Payment method', required=True, #readonly=True, states={'draft':[('readonly',False)]},
+                                      domain="[('type', 'in',['bank','cash']), ('company_id', '=', company_id)]"),
         'currency_id': fields.many2one('res.currency', 'Currency', required=True, readonly=True, states={'draft':[('readonly',False)]}, track_visibility='always'),
         'company_id': fields.many2one('res.company', 'Company', required=True),
-        'currency_id': fields.many2one('res.currency', 'Currency'),
+        'voucher_id': fields.many2one('account.voucher', 'Payment voucher', readonly=True),
         'user_id': fields.many2one('res.users', 'User', required=True),
         'partial': fields.boolean('Partial ', help="Should we calculate mid-period amounts"),
         'frequency': fields.selection(FREQUENCY, 'Period Frequency', required=True),
@@ -113,6 +144,7 @@ class account_prepaid(osv.osv):
 
     _defaults = {
         'frequency': 'month',
+        'date_pay': fields.date.context_today,
         'partial': False,
         'type': _get_type,
         'state': 'draft',
@@ -122,12 +154,49 @@ class account_prepaid(osv.osv):
         'user_id': lambda cr, uid, id, c={}: id,
     }
 
+
+    def fields_view_get(self, cr, uid, view_id=None, view_type=False, context=None, toolbar=False, submenu=False):
+        mod_obj = self.pool.get('ir.model.data')
+        if context is None: context = {}
+
+        if view_type == 'form':
+            if not view_id and context.get('type'):
+                if context.get('type') == 'out_invoice':
+                    result = mod_obj.get_object_reference(cr, uid, 'account_prepaid_subscription', 'subscription_form')
+                else:
+                    result = mod_obj.get_object_reference(cr, uid, 'account_prepaid_subscription', 'subscription_supplier_form')
+                result = result and result[1] or False
+                view_id = result
+        res = super(account_prepaid, self).fields_view_get(cr, uid, view_id=view_id, view_type=view_type, context=context, toolbar=toolbar, submenu=submenu)
+        return res
+
+
     def create(self, cr, uid, vals, context=None):
+        if vals.get('name','/') == '/':
+            vals['name'] = self.pool.get('ir.sequence').get(cr, uid, 'account.prepaid') or '/'
         vals['amount_total'] = vals['amount'] * vals['nb_payments']
         return super(account_prepaid, self).create(cr, uid, vals, context=context)
         
+    def copy(self, cr, uid, prepaid_id, default=None, context=None):
+        default = default or {}
+        default.update({
+            'name': self.pool.get('ir.sequence').get(cr, uid, 'account.prepaid') or '/',
+            'date_from': context.get('date', fields.date.context_today(self,cr,uid,context=context)),
+            'date_pay': context.get('date', fields.date.context_today(self,cr,uid,context=context)),
+            'invoice_ids': [],
+            'voucher_id': False,
+        })
+        return super(account_prepaid, self).copy(cr, uid, prepaid_id, default, context=context)
+
+    def onchange_amount(self, cr, uid, ids, amount, nb_payments, context=None):
+        val =  amount * nb_payments
+        return {'value': {'amount_total': val}}
+
+    def onchange_nb_payments(self, cr, uid, ids, amount, nb_payments, context=None):
+        return self.onchange_amount(cr, uid, ids, amount, nb_payments, context=context)
+        
     
-    def compute_invoices(self, uid, context):
+    def compute_invoices(self, cr, uid, ids, context):
         period_obj = self.pool.get('account.period')
         inv_obj = self.pool.get('account.invoice')
         inv_line_obj = self.pool.get('account.invoice.line')
@@ -135,25 +204,29 @@ class account_prepaid(osv.osv):
         today = datetime.datetime.today()
         for prepaid in self.browse(cr, uid, ids, context=context):
             #~ 1. get period ids
-            datelist = self.datefetch.get(prepaid.frequency)(prepaid.date_from, prepaid.nb_payments)
-            period_ids = [period_obj.find(cr, uid, m, context=context).id for m in dates]
+            datelist = self.datefetch.get(prepaid.frequency)(prepaid.date_from, prepaid.nb_payments, prepaid.partial)
+            period_ids = [period_obj.find(cr, uid, m, context=context)[0] for m in datelist]
             #~ 2. associate periods with dates
             dates = dict(zip(datelist, period_ids))
-            #~ 3. build invoice_line. We will supply invoice_id after
-            inv_line = (0, 0, {
-                'name': prepaid.product_id.name,
-                'product_id': prepaid.product_id.id,
-                'account_id': prepaid.product_account_id.id,
-                'price_unit': prepaid.amount,
-                'quantity': 1,
-                })
+            #~ 3. calculate amounts
+            amounts = {}
+            if prepaid.partial:
+                amountslists = _partial(prepaid.amount, prepaid.nb_payments, prepaid.date_from)
+                amounts = dict(zip(datelist,amountslists))
             #~ 4. start building invoices
             for d in datelist:
+                inv_line = (0, 0, {
+                    'name': prepaid.product_id.name,
+                    'product_id': prepaid.product_id.id,
+                    'account_id': prepaid.product_account_id.id,
+                    'price_unit': amounts.get(d, prepaid.amount),
+                    'quantity': 1,
+                    })
                 invoice = {
                     'type': prepaid.type,
-                    'comment': fields.text('Additional Information'),
+                    'name': " ".join([prepaid.partner_id.name, d]),
                     'date_invoice': d,
-                    'partner_id': prepaid.partener_id.id,
+                    'partner_id': prepaid.partner_id.id,
                     'period_id': dates.get(d),
                     'account_id': datetime.datetime.strptime(d, '%Y-%m-%d') > today and prepaid.pre_account_id.id or prepaid.post_account_id.id,
                     'invoice_line': [inv_line],
@@ -163,8 +236,87 @@ class account_prepaid(osv.osv):
                     'subscription_id': prepaid.id,
                     }
                 inv_id = inv_obj.create(cr, uid, invoice, context=context)
-        return True
+        return self.write(cr, uid, ids, {'state': 'computed'}, context=context)
 
+    def cancel_invoices(self, cr, uid, ids, context):
+        inv_obj = self.pool.get('account.invoice')
+        for prepaid in self.browse(cr, uid, ids, context=context):
+            l = [inv.id for inv in prepaid.invoice_ids]
+            inv_obj.action_cancel(cr,uid,l,context)
+            inv_obj.action_cancel_draft(cr,uid,l,context)
+        return self.write(cr, uid, ids, {'state': 'computed'}, context=context)
+
+    def validate_invoices(self, cr, uid, ids, context):
+        inv_obj = self.pool.get('account.invoice')
+        #~ wf_service = netsvc.LocalService("workflow")
+        for prepaid in self.browse(cr, uid, ids, context=context):
+            for inv in prepaid.invoice_ids:
+                #~ wf_service.trg_validate(uid, 'account.invoice', inv.id, 'invoice_open', cr)
+                inv_obj.action_date_assign(cr,uid,[inv.id],context)
+                inv_obj.action_move_create(cr,uid,[inv.id],context=context)
+                inv_obj.action_number(cr,uid,[inv.id],context)
+                inv_obj.invoice_validate(cr,uid,[inv.id],context=context)
+        return self.write(cr, uid, ids, {'state': 'validated'}, context=context)
+        
+
+    def pay_subscription(self, cr, uid, ids, context):
+        voucher_obj = self.pool.get('account.voucher')
+        inv_obj = self.pool.get('account.invoice')
+        journal_obj = self.pool.get('account.journal')
+        move_line_obj = self.pool.get('account.move.line')
+        company_id = self.pool.get('res.users').browse(cr, uid, uid, context=context).company_id.id
+
+        for prepaid in self.browse(cr, uid, ids, context=context):
+            name = _('Subscription %s') % (prepaid.partner_id.name)
+            partner_id = prepaid.partner_id.id
+            journal = prepaid.payment_id
+            amt = prepaid.amount_total
+            voucher = {
+                'journal_id': journal.id,
+                'company_id': company_id,
+                'partner_id': partner_id,
+                'type':self.vouchertype.get(prepaid.type),
+                'name': name,
+                'reference': prepaid.name,
+                'account_id': journal.default_credit_account_id.id,
+                'amount': amt > 0.0 and amt or 0.0,
+                'date': prepaid.date_pay,
+                'date_due': prepaid.date_pay,
+                }
+
+            # Define the voucher line
+            lml = []
+            move_lines = []
+            # Collect move_lines
+            for i in prepaid.invoice_ids:
+                move_lines.extend(i.move_id.line_id)
+            # Create voucher_lines
+            for move_line_id in move_lines:
+                if prepaid.type == 'in_invoice':
+                    if move_line_id.debit > 0:
+                        continue
+                if prepaid.type == 'out_invoice':
+                    if move_line_id.credit > 0:
+                        continue
+                lml.append({
+                    'name': move_line_id.name,
+                    'move_line_id': move_line_id.id,
+                    'reconcile': True,
+                    'amount': move_line_id.credit > 0 and move_line_id.credit or move_line_id.debit,
+                    'account_id': move_line_id.account_id.id,
+                    'type': move_line_id.credit and 'dr' or 'cr',
+                    })
+            lines = [(0,0,x) for x in lml]
+            voucher['line_ids'] = lines
+            voucher_id = voucher_obj.create(cr, uid, voucher, context=context)
+            self.write(cr, uid, [prepaid.id], {'voucher_id': voucher_id}, context=context)
+            voucher_obj.button_proforma_voucher(cr, uid, [voucher_id], context)
+            move_id = voucher_obj.browse(cr, uid, voucher_id, context=context).move_id.id
+            # post the journal entry if 'Skip 'Draft' State for Manual Entries' is checked
+            if journal.entry_posted:
+                move_obj.button_validate(cr, uid, [move_id], context)
+            inv_obj.confirm_paid(cr, uid, [i.id for i in prepaid.invoice_ids], context=context)
+        return self.write(cr, uid, ids, {'state': 'paid'}, context=context)
 
 account_prepaid()
 
