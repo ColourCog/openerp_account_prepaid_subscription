@@ -22,6 +22,7 @@ Features:
 * Generate payment for arrear/advance invoices
     """,
     "data" : [ 
+      'subscription_view.xml', 
     ], 
     "application": False, 
     "installable": True
