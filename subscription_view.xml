@@ -42,16 +42,15 @@
                               context="{'default_customer': 0, 'search_default_supplier': 1, 'default_supplier': 1}"
                               domain="[('supplier', '=', True)]"/>
                             <field name="product_id" domain="[('purchase_ok', '=', True)]"/>
-                            <field name="amount" widget="monetary" on_change="onchange_amount(amount, nb_payments)" />
-                            <field name="nb_payments" on_change="onchange_nb_payments(amount, nb_payments)" />
                             <field name="amount_total" widget="monetary"/>
+                            <field name="nb_payments" on_change="onchange_nb_payments(amount_total, nb_payments)" />
+                            <field name="amount" widget="monetary" />
                             <field name="frequency"/>
                             <field name="product_account_id" groups="account.group_account_user"/>
                         </group>
                         <group>
                             <field name="date_from"/>
                             <field name="date_pay"/>
-                            <field name="partial"/>
                             <field domain="[('company_id', '=', company_id), ('type', '=', 'payable')]"
                                 name="post_account_id" groups="account.group_account_user"/>
                             <field domain="[('company_id', '=', company_id), ('type', '=', 'payable')]"
@@ -95,16 +94,15 @@
                                 options='{"always_reload": True}'
                                 domain="[('customer', '=', True)]"/>
                             <field name="product_id" domain="[('sale_ok', '=', True)]"/>
-                            <field name="amount" widget="monetary" on_change="onchange_amount(amount, nb_payments)" />
-                            <field name="nb_payments" on_change="onchange_nb_payments(amount, nb_payments)" />
                             <field name="amount_total" widget="monetary"/>
+                            <field name="nb_payments" on_change="onchange_nb_payments(amount_total, nb_payments)" />
+                            <field name="amount" widget="monetary" />
                             <field name="frequency"/>
                             <field name="product_account_id" groups="account.group_account_user"/>
                         </group>
                         <group>
                             <field name="date_from"/>
                             <field name="date_pay"/>
-                            <field name="partial"/>
                             <field domain="[('company_id', '=', company_id), ('type', '=', 'receivable')]"
                                 name="post_account_id" groups="account.group_account_user"/>
                             <field domain="[('company_id', '=', company_id), ('type', '=', 'receivable')]"

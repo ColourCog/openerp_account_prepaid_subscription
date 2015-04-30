@@ -19,11 +19,11 @@ class invoice(osv.osv):
 
 invoice()
 
-def _monthly_dates(start, nb, partial):
+def _monthly_dates(start, nb):
     """Return a list of month end"""
-    if partial:
-        nb += 1 # 13th month!
     s = datetime.datetime.strptime(start, '%Y-%m-%d')
+    if s.day > 1:
+        nb += 1 # 13th month!
     d = datetime.timedelta(1)
     month = s.month
     year = s.year
@@ -38,12 +38,14 @@ def _monthly_dates(start, nb, partial):
         nb -= 1
     return dates
      
-def _partial(amount, nb, cur_date):
+def _partial(total, nb, cur_date):
 
     f = datetime.datetime.strptime(cur_date, '%Y-%m-%d')
     m = datetime.date(f.year, f.month + 1, 1) - datetime.timedelta(1)
-    inst = ((m.day - f.day) / float(m.day)) * amount
-    total = amount * nb     
+    amount = float(total) / nb     
+    inst = amount
+    if f.day > 1:
+        inst = ((m.day - f.day) / float(m.day)) * amount
     amounts = []
 
     while total > 0 :
@@ -137,15 +139,15 @@ class account_prepaid(osv.osv):
         'company_id': fields.many2one('res.company', 'Company', required=True),
         'voucher_id': fields.many2one('account.voucher', 'Payment voucher', readonly=True),
         'user_id': fields.many2one('res.users', 'User', required=True),
-        'partial': fields.boolean('Partial ', help="Should we calculate mid-period amounts"),
         'frequency': fields.selection(FREQUENCY, 'Period Frequency', required=True),
         'state': fields.selection(STATES, 'Status', readonly=True, track_visibility='onchange'),
     }
 
     _defaults = {
+        'nb_payments': 1,
+        'amount_total': 1,
         'frequency': 'month',
         'date_pay': fields.date.context_today,
-        'partial': False,
         'type': _get_type,
         'state': 'draft',
         'journal_id': _get_journal,
@@ -188,9 +190,13 @@ class account_prepaid(osv.osv):
         })
         return super(account_prepaid, self).copy(cr, uid, prepaid_id, default, context=context)
 
-    def onchange_amount(self, cr, uid, ids, amount, nb_payments, context=None):
-        val =  amount * nb_payments
-        return {'value': {'amount_total': val}}
+    def onchange_total(self, cr, uid, ids, amount_total, nb_payments, context=None):
+        val =  float(amount_total) / nb_payments
+        return {'value': {'amount': val}}
+
+    def onchange_amount(self, cr, uid, ids, amount_total, nb_payments, context=None):
+        val =  float(amount_total) / nb_payments
+        return {'value': {'amount': val}}
 
     def onchange_nb_payments(self, cr, uid, ids, amount, nb_payments, context=None):
         return self.onchange_amount(cr, uid, ids, amount, nb_payments, context=context)
@@ -201,18 +207,16 @@ class account_prepaid(osv.osv):
         inv_obj = self.pool.get('account.invoice')
         inv_line_obj = self.pool.get('account.invoice.line')
         total = 0.0
-        today = datetime.datetime.today()
         for prepaid in self.browse(cr, uid, ids, context=context):
+            today = datetime.datetime.strptime(prepaid.date_pay, '%Y-%m-%d')
             #~ 1. get period ids
-            datelist = self.datefetch.get(prepaid.frequency)(prepaid.date_from, prepaid.nb_payments, prepaid.partial)
+            datelist = self.datefetch.get(prepaid.frequency)(prepaid.date_from, prepaid.nb_payments)
             period_ids = [period_obj.find(cr, uid, m, context=context)[0] for m in datelist]
             #~ 2. associate periods with dates
             dates = dict(zip(datelist, period_ids))
             #~ 3. calculate amounts
-            amounts = {}
-            if prepaid.partial:
-                amountslists = _partial(prepaid.amount, prepaid.nb_payments, prepaid.date_from)
-                amounts = dict(zip(datelist,amountslists))
+            amountslists = _partial(prepaid.amount_total, prepaid.nb_payments, prepaid.date_from)
+            amounts = dict(zip(datelist,amountslists))
             #~ 4. start building invoices
             for d in datelist:
                 inv_line = (0, 0, {
@@ -310,12 +314,12 @@ class account_prepaid(osv.osv):
             voucher['line_ids'] = lines
             voucher_id = voucher_obj.create(cr, uid, voucher, context=context)
             self.write(cr, uid, [prepaid.id], {'voucher_id': voucher_id}, context=context)
-            voucher_obj.button_proforma_voucher(cr, uid, [voucher_id], context)
-            move_id = voucher_obj.browse(cr, uid, voucher_id, context=context).move_id.id
+            #~ voucher_obj.button_proforma_voucher(cr, uid, [voucher_id], context)
+            #~ move_id = voucher_obj.browse(cr, uid, voucher_id, context=context).move_id.id
             # post the journal entry if 'Skip 'Draft' State for Manual Entries' is checked
-            if journal.entry_posted:
-                move_obj.button_validate(cr, uid, [move_id], context)
-            inv_obj.confirm_paid(cr, uid, [i.id for i in prepaid.invoice_ids], context=context)
+            #~ if journal.entry_posted:
+                #~ move_obj.button_validate(cr, uid, [move_id], context)
+            #~ inv_obj.confirm_paid(cr, uid, [i.id for i in prepaid.invoice_ids], context=context)
         return self.write(cr, uid, ids, {'state': 'paid'}, context=context)
 
 account_prepaid()
