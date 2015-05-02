@@ -176,7 +176,6 @@ class account_prepaid(osv.osv):
     def create(self, cr, uid, vals, context=None):
         if vals.get('name','/') == '/':
             vals['name'] = self.pool.get('ir.sequence').get(cr, uid, 'account.prepaid') or '/'
-        vals['amount_total'] = vals['amount'] * vals['nb_payments']
         return super(account_prepaid, self).create(cr, uid, vals, context=context)
         
     def copy(self, cr, uid, prepaid_id, default=None, context=None):
