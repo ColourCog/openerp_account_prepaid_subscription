@@ -38,14 +38,16 @@ def _monthly_dates(start, nb):
         nb -= 1
     return dates
      
-def _partial(total, nb, cur_date):
+def _partial(total, nb, start_date):
 
-    f = datetime.datetime.strptime(cur_date, '%Y-%m-%d')
+    f = datetime.datetime.strptime(start_date, '%Y-%m-%d')
     m = datetime.date(f.year, f.month + 1, 1) - datetime.timedelta(1)
     amount = float(total) / nb     
     inst = amount
     if f.day > 1:
-        inst = ((m.day - f.day) / float(m.day)) * amount
+        # if we pay to day, the service should start today, 
+        # so m.day - f.day must be > 0
+        inst = ((m.day - f.day + 1) / float(m.day)) * amount
     amounts = []
 
     while total > 0 :
@@ -122,8 +124,8 @@ class account_prepaid(osv.osv):
             ],'Type', readonly=True, select=True, change_default=True, track_visibility='always'),
         'partner_id':fields.many2one('res.partner', 'Partner', required=True),
         'invoice_ids':fields.one2many('account.invoice', 'subscription_id', 'Invoices'),
-        'amount' : fields.float('Installment Amount', digits_compute=dp.get_precision('Account'), required=True, readonly=True, states={'draft':[('readonly',False)]}),
-        'amount_total' : fields.float('Total', digits_compute=dp.get_precision('Account')), 
+        'amount' : fields.float('Installment Amount', digits_compute=dp.get_precision('Account'), readonly=True, states={'draft':[('readonly',False)]}),
+        'amount_total' : fields.float('Total', digits_compute=dp.get_precision('Account'), required=True), 
         'nb_payments': fields.integer("Number of payments", required=True, readonly=True, states={'draft':[('readonly',False)]}),
         'date_from': fields.date('Start Date', required=True),
         'date_pay': fields.date('Payment Date', required=True),
@@ -207,7 +209,7 @@ class account_prepaid(osv.osv):
         inv_line_obj = self.pool.get('account.invoice.line')
         total = 0.0
         for prepaid in self.browse(cr, uid, ids, context=context):
-            today = datetime.datetime.strptime(prepaid.date_pay, '%Y-%m-%d')
+            pay_date = datetime.datetime.strptime(prepaid.date_pay, '%Y-%m-%d')
             #~ 1. get period ids
             datelist = self.datefetch.get(prepaid.frequency)(prepaid.date_from, prepaid.nb_payments)
             period_ids = [period_obj.find(cr, uid, m, context=context)[0] for m in datelist]
@@ -231,7 +233,8 @@ class account_prepaid(osv.osv):
                     'date_invoice': d,
                     'partner_id': prepaid.partner_id.id,
                     'period_id': dates.get(d),
-                    'account_id': datetime.datetime.strptime(d, '%Y-%m-%d') > today and prepaid.pre_account_id.id or prepaid.post_account_id.id,
+                    # payment made on the date the service starts is in advance
+                    'account_id': datetime.datetime.strptime(d, '%Y-%m-%d') >= pay_date and prepaid.pre_account_id.id or prepaid.post_account_id.id,
                     'invoice_line': [inv_line],
                     'currency_id': prepaid.currency_id.id,
                     'journal_id': prepaid.journal_id.id,
@@ -247,7 +250,10 @@ class account_prepaid(osv.osv):
             l = [inv.id for inv in prepaid.invoice_ids]
             inv_obj.action_cancel(cr,uid,l,context)
             inv_obj.action_cancel_draft(cr,uid,l,context)
-        return self.write(cr, uid, ids, {'state': 'computed'}, context=context)
+            try:
+                inv_obj.unlink(cr, uid, l, context=context)
+            except: pass
+        return self.write(cr, uid, ids, {'state': 'draft'}, context=context)
 
     def validate_invoices(self, cr, uid, ids, context):
         inv_obj = self.pool.get('account.invoice')

@@ -29,7 +29,7 @@
                 <header>
                     <button name="compute_invoices" type="object" states="draft" string="Create Subscriptions" class="oe_highlight" />
                     <button name="validate_invoices" type="object" states="computed" string="Validate Subscription" class="oe_highlight" />
-                    <button name="cancel_invoices" type="object" states="validated" string="Cancel Invoices" />
+                    <button name="cancel_invoices" type="object" states="validated,computed" string="Cancel Invoices" />
                     <button name="pay_subscription" type="object" states="validated" string="Pay Now" class="oe_highlight" />
                     <field name="state" widget="statusbar" statusbar_visible="draft,computed,validated,paid" />
                 </header>
