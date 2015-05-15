@@ -27,10 +27,10 @@
             <field name="arch" type="xml">
                 <form string="Supplier Subscription" version="7.0">
                 <header>
-                    <button name="compute_invoices" type="object" states="draft" string="Create Subscriptions" class="oe_highlight" />
-                    <button name="validate_invoices" type="object" states="computed" string="Validate Subscription" class="oe_highlight" />
+                    <button name="action_compute" type="object" states="draft" string="Create Subscriptions" class="oe_highlight" />
+                    <button name="action_validate" type="object" states="computed" string="Validate Subscription" class="oe_highlight" />
                     <button name="cancel_invoices" type="object" states="validated,computed" string="Cancel Invoices" />
-                    <button name="pay_subscription" type="object" states="validated" string="Pay Now" class="oe_highlight" />
+                    <button name="button_pay_subscription" type="object" states="validated" string="Pay Now" class="oe_highlight" />
                     <field name="state" widget="statusbar" statusbar_visible="draft,computed,validated,paid" />
                 </header>
                 <sheet string="Supplier Subscription">
@@ -55,7 +55,7 @@
                                 name="post_account_id" groups="account.group_account_user"/>
                             <field domain="[('company_id', '=', company_id), ('type', '=', 'payable')]"
                                 name="pre_account_id" groups="account.group_account_user"/>
-                            <field name="journal_id" groups="account.group_account_user" widget="selection"/>
+                            <field name="journal_id" groups="account.group_account_user"/>
                             <field name="payment_id" domain="[('type', 'in', ['bank','cash'])]" 
                                 groups="account.group_account_user" widget="selection"/>
                             <field name="currency_id" invisible="1"/>
@@ -78,10 +78,10 @@
             <field name="arch" type="xml">
                 <form string="Subscription" version="7.0">
                 <header>
-                    <button name="compute_invoices" type="object" states="draft" string="Create Subscriptions" class="oe_highlight" />
-                    <button name="validate_invoices" type="object" states="computed" string="Validate Subscription" class="oe_highlight" />
+                    <button name="action_compute" type="object" states="draft" string="Create Subscriptions" class="oe_highlight" />
+                    <button name="action_validate" type="object" states="computed" string="Validate Subscription" class="oe_highlight" />
                     <button name="cancel_invoices" type="object" states="validated" string="Cancel Invoices" />
-                    <button name="pay_subscription" type="object" states="validated" string="Pay Now" class="oe_highlight" />
+                    <button name="button_pay_subscription" type="object" states="validated" string="Pay Now" class="oe_highlight" />
                     <field name="state" widget="statusbar" statusbar_visible="draft,computed,validated,paid" />
                 </header>
                 <sheet string="Subscription">
@@ -107,7 +107,7 @@
                                 name="post_account_id" groups="account.group_account_user"/>
                             <field domain="[('company_id', '=', company_id), ('type', '=', 'receivable')]"
                                 name="pre_account_id" groups="account.group_account_user"/>
-                            <field name="journal_id" groups="account.group_account_user" widget="selection"/>
+                            <field name="journal_id" groups="account.group_account_user"/>
                             <field name="payment_id" domain="[('type', 'in', ['bank','cash'])]" 
                                 groups="account.group_account_user" widget="selection"/>
                             <field name="currency_id" invisible="1"/>
@@ -188,6 +188,24 @@
             </field>
         </record>
         <menuitem action="action_subscription_tree2" id="menu_action_subscription_tree2" parent="account.menu_finance_payables"/>
+
+        <record id="account_prepaid_pay_view" model="ir.ui.view">
+            <field name="name">account.prepaid.pay.form</field>
+            <field name="model">account.prepaid.pay</field>
+            <field name="arch" type="xml">
+                <form string="Pay Subscription" version="7.0">
+                    <p>Pay this subscription using this payment reference</p>
+                    <group>
+                      <field name="reference" />
+                    </group>
+                    <footer>
+                        <button string="Pay" name="pay_prepaid" type="object" default_focus="1" class="oe_highlight"/>
+                        or
+                        <button string="Cancel" class="oe_link" special="cancel"/>
+                    </footer>
+                </form>
+            </field>
+        </record>
 
     </data>
 </openerp>

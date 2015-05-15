@@ -78,11 +78,11 @@ class account_prepaid(osv.osv):
         ('month', 'Month'),
         ]
     
-    datefetch = {
+    DATEFETCH = {
         'month':_monthly_dates,
     }
     
-    vouchertype = {
+    VOUCHERTYPE = {
         'out_invoice': 'receipt',
         'in_invoice': 'payment',
     }
@@ -116,6 +116,23 @@ class account_prepaid(osv.osv):
             res = journal.currency and journal.currency.id or journal.company_id.currency_id.id
         return res
 
+    def onchange_total(self, cr, uid, ids, amount_total, nb_payments, context=None):
+        val =  float(amount_total) / nb_payments
+        return {'value': {'amount': val}}
+
+    def onchange_amount(self, cr, uid, ids, amount_total, nb_payments, context=None):
+        val =  float(amount_total) / nb_payments
+        return {'value': {'amount': val}}
+
+    def onchange_nb_payments(self, cr, uid, ids, amount, nb_payments, context=None):
+        return self.onchange_amount(cr, uid, ids, amount, nb_payments, context=context)
+        
+    def _get_invoices(self, cr, uid, ids, context=None):
+        res = []
+        for prepaid in self.browse(cr, uid, ids, context=context):
+            res. extend([inv.id for inv in prepaid.invoice_ids])
+        return res
+    
     _columns = {
         'name' : fields.char('Name', size=64, select=True, readonly=True), 
         'type': fields.selection([
@@ -191,19 +208,40 @@ class account_prepaid(osv.osv):
         })
         return super(account_prepaid, self).copy(cr, uid, prepaid_id, default, context=context)
 
-    def onchange_total(self, cr, uid, ids, amount_total, nb_payments, context=None):
-        val =  float(amount_total) / nb_payments
-        return {'value': {'amount': val}}
+    def unlink(self, cr, uid, ids, context=None):
+        for rec in self.browse(cr, uid, ids, context=context):
+            if rec.state not in ['draft']:
+                raise osv.except_osv(_('Warning!'),_('You must cancel the Subscription before you can delete it.'))
+        return super(account_prepaid, self).unlink(cr, uid, ids, context)
 
-    def onchange_amount(self, cr, uid, ids, amount_total, nb_payments, context=None):
-        val =  float(amount_total) / nb_payments
-        return {'value': {'amount': val}}
+    def action_draft(self, cr, uid, ids, context=None):
+        #~ wf_service = netsvc.LocalService("workflow")
+        #~ for prepaid in self.browse(cr, uid, ids):
+            #~ wf_service.trg_delete(uid, 'account.prepaid', prepaid.id, cr)
+            #~ wf_service.trg_create(uid, 'account.prepaid', prepaid.id, cr)
+        return self.write(cr, uid, ids, {'state': 'draft'}, context=context)
 
-    def onchange_nb_payments(self, cr, uid, ids, amount, nb_payments, context=None):
-        return self.onchange_amount(cr, uid, ids, amount, nb_payments, context=context)
-        
+    def action_compute(self, cr, uid, ids, context=None):
+        if self._compute_invoices(cr, uid, ids, context=None):
+            return self.write(cr, uid, ids, {'state': 'computed'}, context=context)
     
-    def compute_invoices(self, cr, uid, ids, context):
+    def action_validate(self, cr, uid, ids, context=None):
+        if self._validate_invoices(cr, uid, ids, context=None):
+            return self.write(cr, uid, ids, {'state': 'validated'}, context=context)
+    
+    def action_paid(self, cr, uid, ids, context=None):
+        return self.write(cr, uid, ids, {'state': 'paid'}, context=context)
+
+    def condition_paid(self, cr, uid, ids, context=None):
+        ok = True
+        for p in self.browse(cr, uid, ids, context=context):
+            for inv in p.invoice_ids:
+                if inv.state != 'paid':
+                    ok = False
+                    break
+        return ok
+
+    def _compute_invoices(self, cr, uid, ids, context):
         period_obj = self.pool.get('account.period')
         inv_obj = self.pool.get('account.invoice')
         inv_line_obj = self.pool.get('account.invoice.line')
@@ -211,7 +249,7 @@ class account_prepaid(osv.osv):
         for prepaid in self.browse(cr, uid, ids, context=context):
             pay_date = datetime.datetime.strptime(prepaid.date_pay, '%Y-%m-%d')
             #~ 1. get period ids
-            datelist = self.datefetch.get(prepaid.frequency)(prepaid.date_from, prepaid.nb_payments)
+            datelist = self.DATEFETCH.get(prepaid.frequency)(prepaid.date_from, prepaid.nb_payments)
             period_ids = [period_obj.find(cr, uid, m, context=context)[0] for m in datelist]
             #~ 2. associate periods with dates
             dates = dict(zip(datelist, period_ids))
@@ -242,7 +280,7 @@ class account_prepaid(osv.osv):
                     'subscription_id': prepaid.id,
                     }
                 inv_id = inv_obj.create(cr, uid, invoice, context=context)
-        return self.write(cr, uid, ids, {'state': 'computed'}, context=context)
+        return True
 
     def cancel_invoices(self, cr, uid, ids, context):
         inv_obj = self.pool.get('account.invoice')
@@ -252,10 +290,13 @@ class account_prepaid(osv.osv):
             inv_obj.action_cancel_draft(cr,uid,l,context)
             try:
                 inv_obj.unlink(cr, uid, l, context=context)
-            except: pass
-        return self.write(cr, uid, ids, {'state': 'draft'}, context=context)
+            except:
+                # can't delete ? disconnect from this subscription at least
+                inv_obj.write(cr, uid, l, {'subscription_id': None}, context=context)
+            self.write(cr, uid, [prepaid.id], {'invoice_ids': []}, context=context)
+        return self.action_draft(cr, uid, ids, context=context)
 
-    def validate_invoices(self, cr, uid, ids, context):
+    def _validate_invoices(self, cr, uid, ids, context):
         inv_obj = self.pool.get('account.invoice')
         #~ wf_service = netsvc.LocalService("workflow")
         for prepaid in self.browse(cr, uid, ids, context=context):
@@ -265,10 +306,10 @@ class account_prepaid(osv.osv):
                 inv_obj.action_move_create(cr,uid,[inv.id],context=context)
                 inv_obj.action_number(cr,uid,[inv.id],context)
                 inv_obj.invoice_validate(cr,uid,[inv.id],context=context)
-        return self.write(cr, uid, ids, {'state': 'validated'}, context=context)
+        return True
         
 
-    def pay_subscription(self, cr, uid, ids, context):
+    def _pay_subscription(self, cr, uid, ids, context):
         voucher_obj = self.pool.get('account.voucher')
         inv_obj = self.pool.get('account.invoice')
         journal_obj = self.pool.get('account.journal')
@@ -284,9 +325,9 @@ class account_prepaid(osv.osv):
                 'journal_id': journal.id,
                 'company_id': company_id,
                 'partner_id': partner_id,
-                'type':self.vouchertype.get(prepaid.type),
+                'type':self.VOUCHERTYPE.get(prepaid.type),
                 'name': name,
-                'reference': prepaid.name,
+                'reference': context.get('reference', prepaid.name),
                 'account_id': journal.default_credit_account_id.id,
                 'amount': amt > 0.0 and amt or 0.0,
                 'date': prepaid.date_pay,
@@ -319,14 +360,60 @@ class account_prepaid(osv.osv):
             voucher['line_ids'] = lines
             voucher_id = voucher_obj.create(cr, uid, voucher, context=context)
             self.write(cr, uid, [prepaid.id], {'voucher_id': voucher_id}, context=context)
-            #~ voucher_obj.button_proforma_voucher(cr, uid, [voucher_id], context)
-            #~ move_id = voucher_obj.browse(cr, uid, voucher_id, context=context).move_id.id
-            # post the journal entry if 'Skip 'Draft' State for Manual Entries' is checked
-            #~ if journal.entry_posted:
-                #~ move_obj.button_validate(cr, uid, [move_id], context)
-            #~ inv_obj.confirm_paid(cr, uid, [i.id for i in prepaid.invoice_ids], context=context)
-        return self.write(cr, uid, ids, {'state': 'paid'}, context=context)
+            voucher_obj.button_proforma_voucher(cr, uid, [voucher_id], context)
+            move_id = voucher_obj.browse(cr, uid, voucher_id, context=context).move_id.id
+            #~ # post the journal entry if 'Skip 'Draft' State for Manual Entries' is checked
+            if journal.entry_posted:
+                move_obj.button_validate(cr, uid, [move_id], context)
+            inv_obj.confirm_paid(cr, uid, [i.id for i in prepaid.invoice_ids], context=context)
+        # TODO: We need to make sure that all invoices are paid before this!!
+        return self.action_paid(cr, uid, ids, context=context)
 
+    def button_pay_subscription(self, cr, uid, ids, context=None):
+        dummy, view_id = self.pool.get('ir.model.data').get_object_reference(cr, uid, 'account_prepaid_subscription', 'account_prepaid_pay_view')
+
+        return {
+            'name':_("Pay Subscription"),
+            'view_mode': 'form',
+            'view_id': view_id,
+            'view_type': 'form',
+            'res_model': 'account.prepaid.pay',
+            'type': 'ir.actions.act_window',
+            'nodestroy': True,
+            'target': 'new',
+            'domain': '[]',
+            'context': context
+        }
+        
 account_prepaid()
+
+class account_prepaid_pay(osv.osv_memory):
+    """
+    This wizard will confirm the all the selected draft invoices
+    """
+
+    _name = "account.prepaid.pay"
+    _description = "Pay the subscription"
+    
+    _columns = { 
+        'reference': fields.char('Payment reference', size=64),
+    } 
+    
+    def pay_prepaid(self, cr, uid, ids, context=None):
+        wf_service = netsvc.LocalService('workflow')
+        if context is None:
+            context = {}
+        pool_obj = pooler.get_pool(cr.dbname)
+        prepaid_obj = pool_obj.get('account.prepaid')
+        
+        context.update({
+            'reference': self.browse(cr,uid,ids)[0].reference,
+            })
+        
+        prepaid_obj._pay_subscription(cr, uid, [context.get('active_id')], context=context)
+
+        return {'type': 'ir.actions.act_window_close'}
+
+account_prepaid_pay()
 
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

@@ -18,7 +18,7 @@ This module enables advance and arrear invoicing for prepaid subscriptions.
 
 Features:
 ---------
-* Batch create invoices
+* Batch create invoices for the number of installment defined
 * Generate payment for arrear/advance invoices
     """,
     "data" : [ 
