@@ -29,7 +29,7 @@
                 <header>
                     <button name="action_compute" type="object" states="draft" string="Create Subscriptions" class="oe_highlight" />
                     <button name="action_validate" type="object" states="computed" string="Validate Subscription" class="oe_highlight" />
-                    <button name="cancel_invoices" type="object" states="validated,computed" string="Cancel Invoices" />
+                    <button name="cancel_invoices" type="object" states="validated,computed,paid" string="Cancel Invoices" />
                     <button name="button_pay_subscription" type="object" states="validated" string="Pay Now" class="oe_highlight" />
                     <field name="state" widget="statusbar" statusbar_visible="draft,computed,validated,paid" />
                 </header>
@@ -56,7 +56,7 @@
                             <field domain="[('company_id', '=', company_id), ('type', '=', 'payable')]"
                                 name="pre_account_id" groups="account.group_account_user"/>
                             <field name="journal_id" groups="account.group_account_user"/>
-                            <field name="payment_id" domain="[('type', 'in', ['bank','cash'])]" 
+                            <field name="payment_id" domain="[('type', 'in', ['bank','cash'])]"
                                 groups="account.group_account_user" widget="selection"/>
                             <field name="currency_id" invisible="1"/>
                             <field name="voucher_id" />
@@ -80,7 +80,7 @@
                 <header>
                     <button name="action_compute" type="object" states="draft" string="Create Subscriptions" class="oe_highlight" />
                     <button name="action_validate" type="object" states="computed" string="Validate Subscription" class="oe_highlight" />
-                    <button name="cancel_invoices" type="object" states="validated" string="Cancel Invoices" />
+                    <button name="cancel_invoices" type="object" states="validated,computed,paid" string="Cancel Invoices" />
                     <button name="button_pay_subscription" type="object" states="validated" string="Pay Now" class="oe_highlight" />
                     <field name="state" widget="statusbar" statusbar_visible="draft,computed,validated,paid" />
                 </header>
@@ -108,7 +108,7 @@
                             <field domain="[('company_id', '=', company_id), ('type', '=', 'receivable')]"
                                 name="pre_account_id" groups="account.group_account_user"/>
                             <field name="journal_id" groups="account.group_account_user"/>
-                            <field name="payment_id" domain="[('type', 'in', ['bank','cash'])]" 
+                            <field name="payment_id" domain="[('type', 'in', ['bank','cash'])]"
                                 groups="account.group_account_user" widget="selection"/>
                             <field name="currency_id" invisible="1"/>
                             <field name="voucher_id" />
