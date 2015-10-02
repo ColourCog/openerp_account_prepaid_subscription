@@ -37,6 +37,17 @@ def _monthly_dates(start, nb):
         nb -= 1
     return dates
 
+def _weekly_dates(start, nb):
+    """Return a list of month end"""
+    s = datetime.datetime.strptime(start, '%Y-%m-%d')
+    d = datetime.timedelta(7)
+    dates = []
+    dates.append(s.strftime('%Y-%m-%d'))
+    while nb > 1:
+        s = s + d
+        dates.append(s.strftime('%Y-%m-%d'))
+        nb -= 1
+    return dates
 
 def _partial(total, nb, start_date):
 
@@ -50,6 +61,20 @@ def _partial(total, nb, start_date):
         # So m.day - f.day must be > 0
         days = (m.day - f.day) > 0 and m.day - f.day or 1
         inst = (days / float(m.day)) * amount
+    amounts = []
+
+    while total > 0:
+        amounts.append(inst)
+        total -= inst
+        inst = amount
+        if total < amount:
+            inst = total
+    return amounts
+
+def _steady(total, nb, start_date):
+
+    amount = float(total) / nb
+    inst = amount
     amounts = []
 
     while total > 0:
@@ -79,10 +104,17 @@ class account_prepaid(osv.osv):
 
     FREQUENCY = [
         ('month', 'Month'),
+        ('week', 'Week'),
         ]
 
     DATEFETCH = {
         'month': _monthly_dates,
+        'week': _weekly_dates,
+    }
+
+    AMOUNTFETCH = {
+        'month': _partial,
+        'week': _steady,
     }
 
     VOUCHERTYPE = {
@@ -271,6 +303,8 @@ class account_prepaid(osv.osv):
         return ok
 
     def _compute_invoices(self, cr, uid, ids, context):
+        if not context:
+            context = {}
         ctx = context.copy()
         ctx.update({'account_period_prefer_normal': True})
         period_obj = self.pool.get('account.period')
@@ -280,12 +314,18 @@ class account_prepaid(osv.osv):
         for prepaid in self.browse(cr, uid, ids, context=ctx):
             pay_date = datetime.datetime.strptime(prepaid.date_pay, '%Y-%m-%d')
             #~ 1. get period ids
-            datelist = self.DATEFETCH.get(prepaid.frequency)(prepaid.date_from, prepaid.nb_payments)
+            datelist = self.DATEFETCH.get(prepaid.frequency)(
+                    prepaid.date_from,
+                    prepaid.nb_payments)
             period_ids = [period_obj.find(cr, uid, m, context=ctx)[0] for m in datelist]
             #~ 2. associate periods with dates
             dates = dict(zip(datelist, period_ids))
             #~ 3. calculate amounts
             amountslists = _partial(prepaid.amount_total, prepaid.nb_payments, prepaid.date_from)
+            amountslists = self.AMOUNTFETCH.get(prepaid.frequency)(
+                    prepaid.amount_total,
+                    prepaid.nb_payments,
+                    prepaid.date_from)
             amounts = dict(zip(datelist,amountslists))
             #~ 4. start building invoices
             for d in datelist:
@@ -344,6 +384,7 @@ class account_prepaid(osv.osv):
 
 
     def _pay_subscription(self, cr, uid, ids, context):
+        ctx = dict(context or {}, account_period_prefer_normal=True)
         voucher_obj = self.pool.get('account.voucher')
         inv_obj = self.pool.get('account.invoice')
         journal_obj = self.pool.get('account.journal')
@@ -366,6 +407,8 @@ class account_prepaid(osv.osv):
                 'amount': amt > 0.0 and amt or 0.0,
                 'date': prepaid.date_pay,
                 'date_due': prepaid.date_pay,
+                'period_id': self.pool.get('account.period').find(
+                    cr, uid, context=ctx)[0],
                 }
 
             # Define the voucher line

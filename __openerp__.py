@@ -1,16 +1,17 @@
+# -*- coding: utf-8 -*-
 {
     "name" : "Prepaid Subscription Accounting",
-    "version" : "0.1", 
-    "category" : "Accounting", 
+    "version" : "0.5",
+    "category" : "Accounting",
     "sequence": 60,
-    "complexity" : "normal", 
-    "author" : "ColourCog.com", 
-    "website" : "http://colourcog.com", 
+    "complexity" : "normal",
+    "author" : "ColourCog.com",
+    "website" : "http://colourcog.com",
     "depends" : [
-        "base", 
+        "base",
         "account_accountant",
-    ], 
-    "summary" : "Manage prepaid subscriptions invoices", 
+    ],
+    "summary" : "Manage prepaid subscriptions invoices",
     "description" : """
 Subscription Accounting
 ========================
@@ -21,12 +22,12 @@ Features:
 * Batch create invoices for the number of installment defined
 * Generate payment for arrear/advance invoices
     """,
-    "data" : [ 
+    "data" : [
       "security/ir.model.access.csv",
-      'subscription_view.xml', 
-      'subscription_sequence.xml', 
-    ], 
-    "application": False, 
+      'subscription_view.xml',
+      'subscription_sequence.xml',
+    ],
+    "application": False,
     "installable": True
 }
 
