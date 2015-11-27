@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     "name" : "Prepaid Subscription Accounting",
-    "version" : "1.0",
+    "version" : "1.1",
     "category" : "Accounting",
     "sequence": 60,
     "complexity" : "normal",
