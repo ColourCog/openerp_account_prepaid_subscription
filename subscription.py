@@ -28,17 +28,18 @@ def _monthly_dates(start, nb):
     year = s.year
     dates = []
     while nb > 0:
-        month += 1
-        m = datetime.date(year, month, 1) - d
-        dates.append(m.strftime('%Y-%m-%d'))
         if month == 12:
             year += 1
-            month = 0
+            month = 1
+        else:
+            month += 1
+        m = datetime.date(year, month, 1) - d
+        dates.append(m.strftime('%Y-%m-%d'))
         nb -= 1
     return dates
 
 def _weekly_dates(start, nb):
-    """Return a list of month end"""
+    """Return a list of week end"""
     s = datetime.datetime.strptime(start, '%Y-%m-%d')
     d = datetime.timedelta(7)
     dates = []
@@ -52,7 +53,12 @@ def _weekly_dates(start, nb):
 def _partial(total, nb, start_date):
 
     f = datetime.datetime.strptime(start_date, '%Y-%m-%d')
-    m = datetime.date(f.year, f.month + 1, 1) - datetime.timedelta(1)
+    year = f.year
+    month = f.month
+    if month == 12:
+        year += 1
+        month = 1
+    m = datetime.date(year, month + 1, 1) - datetime.timedelta(1)
     amount = float(total) / nb
     inst = amount
     if f.day > 1:
